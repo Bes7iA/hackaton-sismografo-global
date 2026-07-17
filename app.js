@@ -306,3 +306,59 @@ document.addEventListener('DOMContentLoaded', () => {
     renderApp();
     setInterval(renderApp, 60000);
 });
+
+// NUEVO: Botón para detectar ubicación automática del usuario
+const locationBtn = document.getElementById('btn-detect-location');
+if (locationBtn) {
+    locationBtn.addEventListener('click', () => {
+        // Cambiamos el texto temporalmente para que el usuario sepa que está cargando
+        locationBtn.innerText = "🔍 Buscando...";
+        locationBtn.disabled = true;
+
+        if (!navigator.geolocation) {
+            alert("Tu navegador no soporta geolocalización.");
+            locationBtn.innerText = "📍 Detectar mi Región";
+            locationBtn.disabled = false;
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            try {
+                // Usamos una API pública y gratuita para traducir coordenadas a Nombre de País
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=es`);
+                const data = await response.json();
+
+                // Extraemos el país (ej: "Chile", "Argentina")
+                const country = data.address?.country || "";
+
+                if (country) {
+                    // Guardamos el país detectado en la memoria y lo aplicamos al sistema
+                    localStorage.setItem('selected_region', country);
+
+                    // Si el país existe en las opciones de tu <select>, lo selecciona.
+                    // Si no existe, lo busca igual por texto.
+                    const regionFilter = document.getElementById('region-filter');
+                    if (regionFilter) regionFilter.value = country;
+
+                    // Actualizamos solo la tarjeta local, sin tocar el gráfico (¡con la optimización que ya hicimos!)
+                    renderRegionDestacada();
+                    alert(`Ubicación detectada: ${country}. Monitoreando tu región.`);
+                } else {
+                    alert("No pudimos determinar tu país exacto.");
+                }
+            } catch (error) {
+                alert("Hubo un error al conectar con el servicio de mapas.");
+            } finally {
+                locationBtn.innerText = "📍 Detectar mi Región";
+                locationBtn.disabled = false;
+            }
+        }, (error) => {
+            alert("Para usar esta función debes permitir el acceso a tu ubicación.");
+            locationBtn.innerText = "📍 Detectar mi Región";
+            locationBtn.disabled = false;
+        });
+    });
+}
