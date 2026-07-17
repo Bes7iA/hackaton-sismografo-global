@@ -266,7 +266,7 @@ function renderChart(earthquakes) {
                 x: { ticks: { color: '#9ca3af' } }
             },
             plugins: {
-                legend: { display: true, labels: { color: '#9ca3af' } },
+                legend: { display: false, labels: { color: '#9ca3af' } },
                 tooltip: { enabled: false }, // Desactiva los cuadros negros flotantes
                 datalabels: { // Configura los números encima de las barras
                     align: 'end',
