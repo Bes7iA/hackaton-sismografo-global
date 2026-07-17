@@ -1,31 +1,36 @@
-<!DOCTYPE html>
+<!DOC<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sismógrafo Global - Explorador de Datos</title>
-    <!-- Tailwind CSS por CDN -->
+
+    <!-- HERRAMIENTAS VISUALES: Estilos para el diseño y componentes de los gráficos -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js por CDN (Requerimiento Nivel Oro) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans">
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans pt-6">
 
-<header class="bg-gray-800 border-b border-gray-700 p-6 text-center">
-    <h1 class="text-3xl font-bold text-red-500 tracking-wide">SISMÓGRAFO GLOBAL</h1>
-    <p class="text-sm text-gray-400 mt-1">Desarrollado por: [Tu Nombre] | Panel Profesional Nivel Oro</p>
-</header>
+<main class="flex-grow container mx-auto px-4">
 
-<main class="flex-grow container mx-auto px-4 py-8">
+    <!-- BARRA DE CONTROL SUPERIOR: Contiene el título, la hora de actualización y los botones principales -->
+    <nav class="bg-gray-800/95 p-4 rounded-xl border border-gray-700 flex flex-col lg:flex-row justify-between items-center gap-4 mb-6 backdrop-blur-sm shadow-lg">
 
-    <!-- NAV: Barra de navegación y controles -->
-    <nav class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-        <div class="flex items-center gap-2">
-            <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
-            <h2 class="text-lg font-semibold">Panel de Control Avanzado</h2>
+        <!-- Bloque de Título e Indicador de Tiempo -->
+        <div class="flex flex-col sm:flex-row items-center gap-4">
+            <div class="flex items-center gap-2">
+                <!-- Lucesita roja parpadeante de "En Vivo" -->
+                <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                <h2 class="text-xl font-bold text-red-500 tracking-wide uppercase">Sismógrafo Global</h2>
+            </div>
+            <!-- Texto que muestra la hora exacta en la que se trajeron los datos -->
+            <span class="bg-gray-900 border border-gray-700 px-3 py-1 rounded text-xs text-gray-400 font-medium">
+                Última sincronización: <span id="timestamp" class="font-mono text-green-400 font-bold">N/A</span>
+            </span>
         </div>
 
-        <div class="flex flex-wrap items-center gap-4">
+        <!-- Controles para filtrar por tamaño de sismo y el botón de actualización manual -->
+        <div class="flex items-center gap-4">
             <div class="flex items-center gap-2">
                 <label for="filter-magnitude" class="text-sm text-gray-400">Magnitud mínima:</label>
                 <select id="filter-magnitude" class="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-red-500">
@@ -35,62 +40,88 @@
                     <option value="6">M 6.0+</option>
                 </select>
             </div>
+            <!-- Botón Maestro: Borra los datos guardados viejos y obliga a la página a buscar datos nuevos de inmediato -->
             <button id="btn-refresh" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-4 rounded text-sm transition duration-200 shadow-md">
                 🔄 Forzar Actualización
             </button>
         </div>
     </nav>
 
-    <!-- Estados de Carga, Errores y Timestamp -->
-    <div id="loading-state" class="text-center py-10 hidden">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-        <p class="text-gray-400">Conectando con los servidores del USGS...</p>
-    </div>
+    <!-- PANELES DE ALERTA PRINCIPALES -->
 
-    <div id="error-state" class="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-lg text-center hidden mb-6"></div>
+    <!-- [ALERTA SUPERIOR] Cuadro de emergencia máxima: Sólo se activa si ocurre un terremoto gigante (mayor a magnitud 7) -->
+    <div id="top-critical-alert" class="mb-8"></div>
 
-    <div class="text-right text-xs text-gray-400 mb-4">
-        Última sincronización: <span id="timestamp" class="font-mono text-gray-200">N/A</span>
-    </div>
+    <!-- CUERPO DE LA PÁGINA: Dividido en secciones organizadas como un tablero de control -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-    <!-- SECTION: Tarjetas de Métricas -->
-    <section id="metrics-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></section>
+        <!-- ==========================================
+             COLUMNA IZQUIERDA: Gráficos y Filtros por País
+             ========================================== -->
+        <div class="lg:col-span-2 space-y-8">
 
-    <!-- GRID DE ANALÍTICA: Gráfico + Listado General -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <!-- Gráfico Interactiva (2 columnas en pantallas grandes) -->
-        <section class="bg-gray-800 p-6 rounded-xl border border-gray-700 lg:col-span-2">
-            <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Distribución de Magnitudes</h3>
-            <div class="relative h-64 w-full">
-                <canvas id="magnitudeChart"></canvas>
-            </div>
-        </section>
+            <!-- Panel del Gráfico: Muestra de forma visual cuántos sismos hay según su tamaño -->
+            <section class="bg-gray-800/95 p-6 rounded-xl border border-gray-700 backdrop-blur-sm shadow-md">
+                <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Distribución de Magnitudes</h3>
+                <div class="relative h-64 w-full">
+                    <!-- Aquí adentro el sistema dibuja las barras de estadísticas automáticamente -->
+                    <canvas id="magnitudeChart"></canvas>
+                </div>
+            </section>
 
-        <!-- Registro General Filtrado (1 columna) -->
-        <section class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Registro Global</h3>
-            <div id="earthquake-list" class="space-y-4 max-h-64 overflow-y-auto pr-2"></div>
-        </section>
-    </div>
+            <!-- Panel de Región Destacada: Lista de sismos enfocada únicamente en el lugar que el usuario elija -->
+            <section class="bg-gray-800/95 p-6 rounded-xl border border-gray-700 border-l-4 border-l-cyan-500 backdrop-blur-sm shadow-md">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 border-b border-gray-700 pb-3 gap-4">
+                    <h3 id="local-section-title" class="text-xl font-bold text-cyan-400">Región Destacada: Monitoreo</h3>
 
-    <!-- SECTION ORO: Filtrado Geográfico Local (Chile) -->
-    <section class="bg-gray-800 p-6 rounded-xl border border-gray-700 border-l-4 border-l-cyan-500">
-        <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
-            <h3 class="text-xl font-bold text-cyan-400">Región Destacada: Monitoreo en Chile</h3>
-            <span class="bg-cyan-950 text-cyan-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-cyan-800">Filtro Local</span>
+                    <div class="flex items-center gap-3">
+                        <!-- Menú desplegable interno para cambiar el lugar a monitorear (Chile, Hawái, Japón, etc.) -->
+                        <div class="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded px-3 py-1 text-xs text-white">
+                            <label for="region-filter" class="text-gray-400 uppercase font-bold text-[10px]">📍 Destacar:</label>
+                            <select id="region-filter" class="bg-gray-900 text-white focus:outline-none cursor-pointer">
+                                <option value="Chile">Chile</option>
+                                <option value="Hawaii">Hawái</option>
+                                <option value="Japan">Japón</option>
+                                <option value="California">California</option>
+                                <option value="Alaska">Alaska</option>
+                                <option value="Mexico">México</option>
+                                <option value="Peru">Perú</option>
+                            </select>
+                        </div>
+                        <span class="bg-cyan-950 text-cyan-400 text-xs font-semibold px-2.5 py-1 rounded border border-cyan-800">Filtro Local</span>
+                    </div>
+                </div>
+                <!-- Espacio vacío donde el sistema va a meter las tarjetas de los sismos del lugar seleccionado -->
+                <div id="chile-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </section>
         </div>
-        <div id="chile-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Se inyectan sismos que contengan "Chile" en su propiedad place -->
+
+        <!-- ==========================================
+             COLUMNA DERECHA: Lista del Mundo y Alerta Informativa
+             ========================================== -->
+        <div class="flex flex-col gap-8">
+
+            <!-- Panel Historial Global: Muestra una lista desplegable con todos los sismos recientes del planeta -->
+            <section class="bg-gray-800/95 p-6 rounded-xl border border-gray-700 backdrop-blur-sm shadow-md flex-grow-0">
+                <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Registro Global</h3>
+                <!-- Lista con barra de desplazamiento interna para revisar los sismos uno por uno -->
+                <div id="earthquake-list" class="space-y-4 max-h-64 overflow-y-auto pr-2"></div>
+            </section>
+
+            <!-- [ALERTA INFERIOR] Cuadro Informativo: Muestra cuál ha sido el sismo más fuerte de toda la lista actual -->
+            <div id="alert-container" class="flex-grow flex"></div>
         </div>
-    </section>
+
+    </div>
 
 </main>
 
-<footer class="bg-gray-800 border-t border-gray-700 py-4 text-center text-xs text-gray-500 mt-8">
+<!-- PIE DE PÁGINA: Nota aclaratoria sobre el origen oficial de los datos -->
+<footer class="bg-gray-800/40 border-t border-gray-700/60 py-4 text-center text-xs text-gray-500 mt-8 backdrop-blur-sm">
     <p>Datos obtenidos en tiempo real desde el <a href="https://earthquake.usgs.gov/" target="_blank" class="text-red-400 hover:underline">U.S. Geological Survey (USGS)</a>.</p>
-    <p class="mt-1">&copy; 2026 Hackatón JavaScript Avanzado.</p>
 </footer>
 
+<!-- CÓDIGO DE FUNCIONAMIENTO: Enlace al archivo JavaScript que hace la magia y trae los datos -->
 <script src="app.js"></script>
 </body>
 </html>

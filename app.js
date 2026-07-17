@@ -1,207 +1,272 @@
-let globalEarthquakeData = null;
-let myChart = null; // Instancia global del gráfico para poder destruirlo/redibujarlo
+// CONFIGURACIÓN: Tiempo de espera para no saturar el sistema (1 minuto)
+const CACHE_DURATION = 60000;
+// DIRECCIÓN DE INTERNET: El enlace oficial de donde sacamos la información de los sismos en vivo
+const API_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson';
 
-// 1. POO Estricta: Lógica y Procesamiento Desacoplado
+// FONDO DE PANTALLA: Coloca la imagen de las olas del mar fijas en el fondo de la página
+document.body.style.backgroundImage = "url('https://images.unsplash.com/photo-1518837695005-2083093ee35b?q=80&w=1920')";
+document.body.style.backgroundSize = "cover";
+document.body.style.backgroundAttachment = "fixed";
+document.body.style.backgroundPosition = "center";
+
+// EL ORGANIZADOR DE DATOS: Este bloque se encarga de ordenar y separar la lista de sismos que llega de internet
 class EarthquakeService {
-    constructor(features) {
-        this.features = features || [];
+    constructor(data) {
+        this.earthquakes = data.features || [];
     }
-
-    // Filtro por magnitud mínima
+    // Filtra la lista para dejar solo los sismos que tengan el tamaño mínimo seleccionado
     filterByMagnitude(minMag) {
-        return this.features.filter(f => (f.properties.mag || 0) >= minMag);
+        return this.earthquakes.filter(eq => eq.properties.mag >= minMag);
     }
-
-    // [NIVEL ORO]: Filtrado Geográfico Estricto del lado del cliente para "Chile"
-    filterByCountry(featuresList, countryName) {
-        return featuresList.filter(f => {
-            const place = f.properties.place || "";
-            return place.toLowerCase().includes(countryName.toLowerCase());
-        });
+    // Filtra la lista para buscar solo los sismos que mencionen el lugar elegido (como "Chile" o "Hawaii")
+    filterByRegion(regionName) {
+        if (!regionName) return [];
+        return this.earthquakes.filter(eq =>
+            eq.properties.place.toLowerCase().includes(regionName.toLowerCase())
+        );
     }
+    // Ordena los sismos de mayor a menor potencia
+    sortByMagnitude(list) {
+        return [...list].sort((a, b) => b.properties.mag - a.properties.mag);
+    }
+// NUEVA LÓGICA: Busca estrictamente el último sismo cronológico registrado en el mundo
+    findHighestAlert() {
+        if (this.earthquakes.length === 0) return null;
 
-    // Lógica avanzada de métricas
-    getStats(filteredFeatures) {
-        const magnitudes = filteredFeatures.map(f => f.properties.mag || 0);
-        const maxMag = magnitudes.length > 0 ? Math.max(...magnitudes) : 0;
-        const tsunamiCount = filteredFeatures.filter(f => f.properties.tsunami > 0).length;
-        const sortedFeatures = [...filteredFeatures].sort((a, b) => b.properties.mag - a.properties.mag);
+        // Ordena la lista poniendo el sismo más reciente en el tiempo arriba de todo
+        const ordenadosPorTiempo = [...this.earthquakes].sort((a, b) => b.properties.time - a.properties.time);
 
-        const majorEvent = filteredFeatures.find(f => f.properties.mag >= 4.0);
-        const topHighlight = majorEvent ? majorEvent.properties.place : "Sin anomalías críticas";
-
-        return { total: filteredFeatures.length, maxMag, tsunamiCount, topHighlight, sortedFeatures };
+        // Devuelve el último sismo que ocurrió en el planeta
+        return ordenadosPorTiempo[0];
+    }
+    // Busca si hay algún sismo peligroso que supere el tamaño de 7.0 grados
+    findCriticalEarthquake() {
+        return this.earthquakes.find(eq => eq.properties.mag >= 7.0) || null;
     }
 }
 
-// 2. [NIVEL ORO]: Inicialización y Reactividad del Gráfico (Chart.js)
-function updateChart(filteredFeatures) {
-    const ctx = document.getElementById('magnitudeChart').getContext('2d');
+// EL CARTERO (Mecanismo de descarga): Va a internet a buscar los sismos más recientes
+async function fetchEarthquakeData() {
+    // Revisa si ya tenemos datos guardados en la memoria del navegador y qué hora era
+    const cachedData = localStorage.getItem('earthquake_data');
+    const cachedTime = localStorage.getItem('earthquake_time');
+    const now = Date.now();
 
-    // Agrupamos los sismos en rangos para el histograma
-    const ranges = { '0-2.5': 0, '2.5-4.5': 0, '4.5-6.0': 0, '6.0+': 0 };
-
-    filteredFeatures.forEach(f => {
-        const mag = f.properties.mag || 0;
-        if (mag < 2.5) ranges['0-2.5']++;
-        else if (mag < 4.5) ranges['2.5-4.5']++;
-        else if (mag < 6.0) ranges['4.5-6.0']++;
-        else ranges['6.0+']++;
-    });
-
-    // Si ya existe un gráfico, lo destruimos antes de crear el nuevo para evitar bugs visuales
-    if (myChart) {
-        myChart.destroy();
+    // Si los datos guardados tienen menos de un minuto, los usa para no gastar internet en vano
+    if (cachedData && cachedTime && (now - cachedTime < CACHE_DURATION)) {
+        return JSON.parse(cachedData);
     }
 
-    myChart = new Chart(ctx, {
+    // Si no hay datos o ya pasó el minuto, viaja a internet a buscar la información nueva
+    try {
+        const response = await fetch(API_URL);
+        if (!response.ok) throw new Error('Error de conexión');
+        const data = await response.json();
+        // Guarda la información nueva y la hora actual en la memoria para la próxima consulta
+        localStorage.setItem('earthquake_data', JSON.stringify(data));
+        localStorage.setItem('earthquake_time', now.toString());
+        return data;
+    } catch (error) {
+        // Si internet falla por completo, usa lo último que tenga guardado para que la página no quede vacía
+        if (cachedData) return JSON.parse(cachedData);
+        return null;
+    }
+}
+
+// Variable interna para controlar y actualizar el dibujo de las estadísticas
+let chartInstance = null;
+
+// EL MOTOR PRINCIPAL: Se encarga de armar la página y dibujar todo con los datos actualizados
+async function renderApp() {
+    // 1. Le pide los datos al "cartero"
+    const rawData = await fetchEarthquakeData();
+    if (!rawData) return;
+
+    // 2. Le pasa los datos al "organizador" para empezar a separarlos
+    const service = new EarthquakeService(rawData);
+
+    // 3. Revisa qué tamaño mínimo de sismo seleccionó el usuario en la pantalla
+    const minMagSelect = document.getElementById('filter-magnitude');
+    const minMag = minMagSelect ? parseFloat(minMagSelect.value) : 0;
+
+    // 4. Revisa qué país o región se guardó en la memoria o cuál está marcada actualmente
+    const regionSelect = document.getElementById('region-filter');
+    let selectedRegion = regionSelect ? regionSelect.value : localStorage.getItem('selected_region') || 'Chile';
+    if (regionSelect) regionSelect.value = selectedRegion;
+
+    // 5. Prepara las listas finales filtradas y ordenadas
+    const globalFiltrados = service.filterByMagnitude(minMag);
+    const globalOrdenados = service.sortByMagnitude(globalFiltrados);
+    const regionFiltrados = service.filterByRegion(selectedRegion);
+
+    // 6. Escribe la hora actual en la barra superior para avisar cuándo se actualizaron los datos
+    const timestampEl = document.getElementById('timestamp');
+    if (timestampEl) {
+        timestampEl.innerText = new Date().toLocaleTimeString();
+    }
+
+    // 7. DIBUJAR ALERTA CENTRAL SUPERIOR (Peligro crítico)
+    const sismoCritico = service.findCriticalEarthquake();
+    const topAlertContainer = document.getElementById('top-critical-alert');
+    if (topAlertContainer) {
+        if (sismoCritico) {
+            // Si hay un terremoto > 7.0, pinta un cuadro rojo gigante con sirenas
+            topAlertContainer.innerHTML = `
+                <div class="bg-red-700 border-4 border-red-500 text-white p-6 rounded-xl shadow-2xl text-center">
+                    <h3 class="text-2xl font-black tracking-wider uppercase mb-2">🚨 ÚLTIMO SISMO CON MAGNITUD MAYOR A 7 REGISTRADO 🚨</h3>
+                    <p class="text-xl font-bold">¡Evento Crítico Detectado! <span class="text-3xl font-extrabold text-yellow-300">M ${sismoCritico.properties.mag}</span></p>
+                    <p class="text-md mt-1 font-semibold">📍 Ubicación: ${sismoCritico.properties.place}</p>
+                    <p class="text-xs text-gray-200 mt-1">Sincronizado en tiempo real</p>
+                </div>
+            `;
+        } else {
+            // Si el planeta está tranquilo, muestra el aviso informativo gris estándar
+            topAlertContainer.innerHTML = `
+                <div class="bg-gradient-to-r from-gray-800/90 to-red-950/40 border border-gray-700 text-white p-5 rounded-xl shadow-md backdrop-blur-sm text-center">
+                    <h3 class="text-lg font-bold tracking-wider text-red-400 uppercase flex items-center justify-center gap-2">
+                        ⚠️ MONITOREO DE EVENTOS MAYORES
+                    </h3>
+                    <p class="text-sm text-gray-300 mt-1">Último sismo con magnitud mayor a 7 registrado: Ninguno en la última hora. El umbral global permanece estable.</p>
+                </div>
+            `;
+        }
+    }
+
+    // 8. DIBUJAR ALERTA INFERIOR DERECHA (El sismo más fuerte de la hora)
+    const sismoMasFuerte = service.findHighestAlert();
+    const alertaContainer = document.getElementById('alert-container');
+    if (alertaContainer && sismoMasFuerte) {
+        alertaContainer.innerHTML = `
+            <div class="bg-gray-800/95 border border-red-900/60 text-white p-6 rounded-xl shadow-md backdrop-blur-sm w-full flex flex-col justify-center">
+                <h4 class="text-xs font-bold tracking-wider uppercase text-gray-400 mb-2 flex items-center gap-2">
+                    <span>🔔</span> Ultima Actividad Sismica Registrada
+                </h4>
+                <p class="text-base text-gray-200">
+                    Magnitud local máxima: <span class="font-bold text-yellow-400 text-lg">M ${sismoMasFuerte.properties.mag}</span>
+                </p>
+                <p class="text-sm text-gray-300 mt-2 truncate">📍 ${sismoMasFuerte.properties.place}</p>
+                <p class="text-xs text-gray-500 mt-1">Hora del reporte: ${new Date(sismoMasFuerte.properties.time).toLocaleTimeString()}</p>
+            </div>
+        `;
+    }
+
+    // 9. DIBUJAR LA LISTA GLOBAL (Todos los sismos del mundo en la derecha)
+    const listContainer = document.getElementById('earthquake-list');
+    if (listContainer) {
+        if (globalOrdenados.length === 0) {
+            listContainer.innerHTML = '<p class="text-gray-400 text-center py-8">No hay sismos.</p>';
+        } else {
+            // Arma los cuadritos uno por uno. Si el sismo es fuerte lo pinta con letras rojas, si es débil con verdes
+            listContainer.innerHTML = globalOrdenados.map(eq => `
+                <article class="bg-gray-900/90 border border-gray-700 p-3 rounded-lg shadow-sm hover:border-red-500 transition-colors backdrop-blur-sm">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-base font-bold ${eq.properties.mag >= 4.0 ? 'text-red-400' : 'text-green-400'}">M ${eq.properties.mag}</span>
+                        <span class="text-[11px] text-gray-400">${new Date(eq.properties.time).toLocaleTimeString()}</span>
+                    </div>
+                    <p class="text-xs text-gray-300 truncate">📍 ${eq.properties.place}</p>
+                </article>
+            `).join('');
+        }
+    }
+
+    // 10. DIBUJAR LA LISTA REGIONAL (Los sismos del país elegido en la izquierda)
+    const localContainer = document.getElementById('chile-list');
+    const localTitle = document.getElementById('local-section-title');
+    if (localTitle) localTitle.innerText = `Región Destacada: Monitoreo en ${selectedRegion}`;
+
+    if (localContainer) {
+        if (regionFiltrados.length === 0) {
+            localContainer.innerHTML = `<p class="text-gray-400 text-center col-span-full py-6">Sin actividad reciente en ${selectedRegion}.</p>`;
+        } else {
+            // Arma los cuadritos azules correspondientes al país que elegiste
+            localContainer.innerHTML = regionFiltrados.map(eq => `
+                <article class="bg-blue-950/60 border border-blue-700/50 p-4 rounded-lg shadow-sm backdrop-blur-sm">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-base font-bold text-blue-300">M ${eq.properties.mag}</span>
+                        <span class="text-[11px] text-blue-400">${new Date(eq.properties.time).toLocaleTimeString()}</span>
+                    </div>
+                    <p class="text-xs text-gray-200 truncate">📍 ${eq.properties.place}</p>
+                </article>
+            `).join('');
+        }
+    }
+
+    // 11. Le pasa los datos refinados al dibujante de estadísticas para que actualice las barras gráficas
+    renderChart(globalOrdenados);
+}
+
+// EL DIBUJAR DE ESTADÍSTICAS: Cuenta cuántos sismos hay de cada tipo y pinta las barras de colores
+function renderChart(earthquakes) {
+    const ctx = document.getElementById('magnitudeChart');
+    if (!ctx) return;
+
+    // Contadores vacíos para clasificar los sismos por su tamaño
+    let micro = 0, menor = 0, ligero = 0, moderado = 0;
+    earthquakes.forEach(eq => {
+        const m = eq.properties.mag;
+        if (m < 2.5) micro++;
+        else if (m < 4.5) menor++;
+        else if (m < 6.0) ligero++;
+        else moderado++;
+    });
+
+    // Si ya existía un gráfico dibujado antes, lo borra por completo para poder pintar el nuevo encima sin errores
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    // Genera el gráfico de barras con sus nombres, números y colores correspondientes
+    chartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: Object.keys(ranges),
+            labels: ['Micro (<2.5)', 'Menor (2.5-4.4)', 'Ligero (4.5-5.9)', 'Mod-Fuerte (>6.0)'],
             datasets: [{
-                label: 'Cantidad de Sismos por Intensidad',
-                data: Object.values(ranges),
-                backgroundColor: ['#3b82f6', '#eab308', '#f97316', '#dc2626'],
+                label: 'Cantidad de Sismos',
+                data: [micro, menor, ligero, moderado],
+                backgroundColor: ['#4ade80', '#facc15', '#fb923c', '#ef4444'],
                 borderWidth: 0
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
             scales: {
                 y: { beginAtZero: true, grid: { color: '#374151' }, ticks: { color: '#9ca3af' } },
                 x: { ticks: { color: '#9ca3af' } }
-            }
+            },
+            plugins: { legend: { display: false } }
         }
     });
 }
 
-// 3. Controlador UI: Renderizado dinámico general
-function renderDashboard() {
-    const minMag = parseFloat(document.getElementById('filter-magnitude').value);
-    const service = new EarthquakeService(globalEarthquakeData.features);
+// INICIO AUTOMÁTICO: Configura los interruptores y arranca el programa cuando la pantalla se termina de cargar
+document.addEventListener('DOMContentLoaded', () => {
 
-    // Aplicamos los filtros en cascada del lado del cliente
-    const filteredFeatures = service.filterByMagnitude(minMag);
-    const stats = service.getStats(filteredFeatures);
+    // Interruptor 1: Si cambias la magnitud mínima, re-calcula y actualiza la pantalla
+    const magFilter = document.getElementById('filter-magnitude');
+    if (magFilter) magFilter.addEventListener('change', renderApp);
 
-    // Actualizar Timestamp del Servidor (Propiedad updated de la API)
-    const serverTime = new Date(globalEarthquakeData.metadata.updated);
-    document.getElementById('timestamp').textContent = serverTime.toLocaleString();
-
-    // Renderizar Tarjetas Superiores
-    document.getElementById('metrics-container').innerHTML = `
-        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-md">
-            <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Sismos Analizados</h3>
-            <p class="text-4xl font-extrabold text-blue-400 mt-2">${stats.total}</p>
-        </div>
-        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-md">
-            <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Magnitud Máxima</h3>
-            <p class="text-4xl font-extrabold text-red-500 mt-2">${stats.maxMag.toFixed(1)}</p>
-        </div>
-        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-md">
-            <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Alertas Tsunami</h3>
-            <p class="text-4xl font-extrabold text-yellow-500 mt-2">${stats.tsunamiCount}</p>
-        </div>
-        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-md">
-            <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Mayor Alerta Reciente</h3>
-            <p class="text-xs font-semibold text-green-400 mt-3 truncate" title="${stats.topHighlight}">${stats.topHighlight}</p>
-        </div>
-    `;
-
-    // Renderizar Listado General (Cards de sismos)
-    const listContainer = document.getElementById('earthquake-list');
-    if (filteredFeatures.length === 0) {
-        listContainer.innerHTML = `<p class="text-gray-500 text-center py-4">Sin coincidencias.</p>`;
-    } else {
-        listContainer.innerHTML = stats.sortedFeatures.map(eq => {
-            const p = eq.properties;
-            return `
-                <div class="p-3 bg-gray-900/50 rounded border border-gray-700 flex justify-between items-center text-xs">
-                    <span class="truncate pr-2 w-40 font-medium">${p.place}</span>
-                    <span class="font-bold text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60">M ${p.mag.toFixed(1)}</span>
-                </div>
-            `;
-        }).join('');
+    // Interruptor 2: Si cambias el país a destacar, guarda tu preferencia en la memoria y actualiza la lista local
+    const regionFilter = document.getElementById('region-filter');
+    if (regionFilter) {
+        regionFilter.addEventListener('change', (e) => {
+            localStorage.setItem('selected_region', e.target.value);
+            renderApp();
+        });
     }
 
-    // [NIVEL ORO]: Renderizar Sección Especial de Chile (Independiente del filtro de magnitud superior para ver todo)
-    const chileFeatures = service.filterByCountry(globalEarthquakeData.features, "Chile");
-    const chileContainer = document.getElementById('chile-list');
-
-    if (chileFeatures.length === 0) {
-        chileContainer.innerHTML = `<div class="col-span-full text-center text-gray-500 py-4">No se registran sismos en Chile en la última hora.</div>`;
-    } else {
-        chileContainer.innerHTML = chileFeatures.map(eq => {
-            const p = eq.properties;
-            const t = new Date(p.time).toLocaleTimeString();
-            return `
-                <article class="p-4 bg-cyan-950/20 border border-cyan-900/60 rounded-xl flex justify-between items-center">
-                    <div>
-                        <h4 class="text-sm font-bold text-gray-200 truncate w-44">${p.place.replace(", Chile", "")}</h4>
-                        <p class="text-xs text-gray-400 mt-0.5">Hora local: ${t}</p>
-                    </div>
-                    <span class="text-md font-black text-cyan-400 bg-cyan-950 border border-cyan-800 px-3 py-1 rounded-lg">M ${p.mag.toFixed(1)}</span>
-                </article>
-            `;
-        }).join('');
+    // Interruptor 3: Si presionas el botón de "Forzar Actualización", borra el reloj y busca datos nuevos al instante
+    const refreshBtn = document.getElementById('btn-refresh');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            localStorage.removeItem('earthquake_time');
+            renderApp();
+        });
     }
 
-    // Actualizar de forma reactiva el gráfico con la data filtrada actual
-    updateChart(filteredFeatures);
-}
+    // DISPARADOR: Ejecuta todo el sistema por primera vez al abrir la página
+    renderApp();
 
-// 4. [NIVEL ORO]: Gestión del Caché Local Expirable (5 Minutos)
-async function fetchEarthquakeData(forceRefresh = false) {
-    const cacheKey = 'usgs_earthquake_data';
-    const cacheTimeKey = 'usgs_earthquake_time';
-    const cacheDuration = 5 * 60 * 1000; // 5 minutos en milisegundos
-
-    const now = Date.now();
-    const cachedData = localStorage.getItem(cacheKey);
-    const cachedTime = localStorage.getItem(cacheTimeKey);
-
-    // Si el usuario no fuerza la recarga, y hay datos frescos en el caché, los usamos
-    if (!forceRefresh && cachedData && cachedTime && (now - cachedTime < cacheDuration)) {
-        console.log("Cargando datos desde el localStorage (Caché activo)...");
-        globalEarthquakeData = JSON.parse(cachedData);
-        renderDashboard();
-        return;
-    }
-
-    // Si no hay caché o expiró, hacemos la petición HTTP
-    console.log("Caché expirado o actualización forzada. Consultando API...");
-    const url = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson';
-    const loadingEl = document.getElementById('loading-state');
-    const errorEl = document.getElementById('error-state');
-
-    loadingEl.classList.remove('hidden');
-    errorEl.classList.add('hidden');
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Error de conexión HTTP: ${response.status}`);
-
-        globalEarthquakeData = await response.json();
-
-        // Guardamos en el localStorage con la estampa de tiempo actual
-        localStorage.setItem(cacheKey, JSON.stringify(globalEarthquakeData));
-        localStorage.setItem(cacheTimeKey, now);
-
-        renderDashboard();
-    } catch (error) {
-        console.error(error);
-        errorEl.textContent = `Error crítico: ${error.message}. Se intentará usar caché antiguo si existe.`;
-        errorEl.classList.remove('hidden');
-    } finally {
-        loadingEl.classList.add('hidden');
-    }
-}
-
-// 5. Asignación de Listeners de Eventos
-document.getElementById('btn-refresh').addEventListener('click', () => fetchEarthquakeData(true)); // forceRefresh = true
-document.getElementById('filter-magnitude').addEventListener('change', renderDashboard);
-
-// Carga Inicial
-document.addEventListener('DOMContentLoaded', () => fetchEarthquakeData(false));
+    // TEMPORIZADOR: Se queda funcionando en secreto y actualiza los datos automáticamente cada 1 minuto (60000 milisegundos)
+    setInterval(renderApp, 60000);
+});
