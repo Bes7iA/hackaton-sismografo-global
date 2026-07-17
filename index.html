@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sismógrafo Global - Explorador de Datos</title>
+    <!-- Tailwind CSS por CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js por CDN (Requerimiento Nivel Oro) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans">
+
+<header class="bg-gray-800 border-b border-gray-700 p-6 text-center">
+    <h1 class="text-3xl font-bold text-red-500 tracking-wide">SISMÓGRAFO GLOBAL</h1>
+    <p class="text-sm text-gray-400 mt-1">Desarrollado por: [Tu Nombre] | Panel Profesional Nivel Oro</p>
+</header>
+
+<main class="flex-grow container mx-auto px-4 py-8">
+
+    <!-- NAV: Barra de navegación y controles -->
+    <nav class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
+        <div class="flex items-center gap-2">
+            <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+            <h2 class="text-lg font-semibold">Panel de Control Avanzado</h2>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="filter-magnitude" class="text-sm text-gray-400">Magnitud mínima:</label>
+                <select id="filter-magnitude" class="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-red-500">
+                    <option value="0">Todos los sismos</option>
+                    <option value="2">M 2.0+</option>
+                    <option value="4">M 4.0+</option>
+                    <option value="6">M 6.0+</option>
+                </select>
+            </div>
+            <button id="btn-refresh" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-4 rounded text-sm transition duration-200 shadow-md">
+                🔄 Forzar Actualización
+            </button>
+        </div>
+    </nav>
+
+    <!-- Estados de Carga, Errores y Timestamp -->
+    <div id="loading-state" class="text-center py-10 hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
+        <p class="text-gray-400">Conectando con los servidores del USGS...</p>
+    </div>
+
+    <div id="error-state" class="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-lg text-center hidden mb-6"></div>
+
+    <div class="text-right text-xs text-gray-400 mb-4">
+        Última sincronización: <span id="timestamp" class="font-mono text-gray-200">N/A</span>
+    </div>
+
+    <!-- SECTION: Tarjetas de Métricas -->
+    <section id="metrics-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></section>
+
+    <!-- GRID DE ANALÍTICA: Gráfico + Listado General -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        <!-- Gráfico Interactiva (2 columnas en pantallas grandes) -->
+        <section class="bg-gray-800 p-6 rounded-xl border border-gray-700 lg:col-span-2">
+            <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Distribución de Magnitudes</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="magnitudeChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Registro General Filtrado (1 columna) -->
+        <section class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Registro Global</h3>
+            <div id="earthquake-list" class="space-y-4 max-h-64 overflow-y-auto pr-2"></div>
+        </section>
+    </div>
+
+    <!-- SECTION ORO: Filtrado Geográfico Local (Chile) -->
+    <section class="bg-gray-800 p-6 rounded-xl border border-gray-700 border-l-4 border-l-cyan-500">
+        <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+            <h3 class="text-xl font-bold text-cyan-400">Región Destacada: Monitoreo en Chile</h3>
+            <span class="bg-cyan-950 text-cyan-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-cyan-800">Filtro Local</span>
+        </div>
+        <div id="chile-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Se inyectan sismos que contengan "Chile" en su propiedad place -->
+        </div>
+    </section>
+
+</main>
+
+<footer class="bg-gray-800 border-t border-gray-700 py-4 text-center text-xs text-gray-500 mt-8">
+    <p>Datos obtenidos en tiempo real desde el <a href="https://earthquake.usgs.gov/" target="_blank" class="text-red-400 hover:underline">U.S. Geological Survey (USGS)</a>.</p>
+    <p class="mt-1">&copy; 2026 Hackatón JavaScript Avanzado.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
