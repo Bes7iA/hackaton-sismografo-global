@@ -164,8 +164,8 @@ function actualizarAlertaCritica(service) {
 
             topAlertContainer.innerHTML = `
                 <div class="bg-red-700 border-4 border-red-500 text-white p-6 rounded-xl shadow-2xl text-center">
-                    <h3 class="text-2xl font-black tracking-wider uppercase mb-2">🚨 ÚLTIMO SISMO CON MAGNITUD MAYOR A 7 REGISTRADO 🚨</h3>
-                    <p class="text-xl font-bold">Alerta Histórica Fija: <span class="text-3xl font-extrabold text-yellow-300">M ${sismoAnclado.properties.mag}</span></p>
+                    <h3 class="text-2xl font-black tracking-wider uppercase mb-2">🚨 ÚLTIMO GRAN SISMO REGISTRADO 🚨</h3>
+                    <p class="text-xl font-bold"><span class="text-3xl font-extrabold text-yellow-300">MAGNITUD ${sismoAnclado.properties.mag}</span></p>
                     <p class="text-md mt-1 font-semibold">📍 Ubicación: ${sismoAnclado.properties.place}</p>
                     <div class="mt-3 inline-block bg-red-900/60 border border-red-400/30 px-4 py-1.5 rounded-lg">
                         <p class="text-sm font-medium">📅 Fecha: <span class="text-yellow-300 font-bold">${fechaSismo}</span> a las <span class="text-yellow-300 font-bold">${horaSismo}</span></p>
