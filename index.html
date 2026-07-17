@@ -8,6 +8,8 @@
     <!-- HERRAMIENTAS VISUALES: Estilos para el diseño y componentes de los gráficos -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans pt-6">
 
@@ -62,7 +64,7 @@
 
             <!-- Panel del Gráfico: Muestra de forma visual cuántos sismos hay según su tamaño -->
             <section class="bg-gray-800/95 p-6 rounded-xl border border-gray-700 backdrop-blur-sm shadow-md">
-                <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Distribución de Magnitudes</h3>
+                <h3 class="text-xl font-bold mb-4 text-gray-200 border-b border-gray-700 pb-2">Distribución de Magnitudes de las Ultimas 24 Horas</h3>
                 <div class="relative h-64 w-full">
                     <!-- Aquí adentro el sistema dibuja las barras de estadísticas automáticamente -->
                     <canvas id="magnitudeChart"></canvas>
